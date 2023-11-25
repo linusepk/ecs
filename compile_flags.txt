@@ -1,0 +1,7 @@
+-std=gnu99
+-Wall
+-Wextra
+
+-Iinclude/
+-Isrc/
+-Ilibs/rebound/
