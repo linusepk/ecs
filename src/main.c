@@ -63,7 +63,7 @@ struct ecs_t {
 
 struct ecs_iter_t {
     const ecs_t *ecs;
-    const re_dyn_arr_t(void *) components;
+    re_dyn_arr_t(void *) const components;
     const u32_t count;
 };
 
@@ -191,7 +191,7 @@ void _ecs_register_system_impl(ecs_t *ecs, system_group_t group, system_t system
             return;
         }
 
-        re_dyn_arr_push(type, re_hash_map_get(ecs->component_map, comp_name));
+        re_dyn_arr_push(type, re_hash_map_get(ecs->component_map, comp_name)->id);
     }
     qsort(type, re_dyn_arr_count(type), sizeof(component_id_t), type_sort_compare);
 
@@ -204,12 +204,49 @@ void _ecs_register_system_impl(ecs_t *ecs, system_group_t group, system_t system
 }
 #define ecs_register_system(ECS, GROUP, SYSTEM, COMPONENTS...) _ecs_register_system_impl((ECS), (GROUP), (SYSTEM), re_str_lit(#COMPONENTS));
 
+static void ecs_run_archetype(ecs_t *ecs, archetype_t *archetype, system_info_t info) {
+    ecs_iter_t iter = {
+        .ecs = ecs,
+        .components = NULL,
+        .count = re_dyn_arr_count(archetype->components[0])
+    };
+    for (u32_t i = 0; i < re_dyn_arr_count(info.component_type); i++) {
+        u32_t index = re_hash_map_get(archetype->component_map, info.component_type[i]);
+        void *comp_array = archetype->components[index];
+        re_dyn_arr_push(iter.components, comp_array);
+    }
+
+    info.func(iter);
+
+    for (re_hash_map_iter_t iter = re_hash_map_iter_get(archetype->edges);
+        re_hash_map_iter_valid(iter);
+        iter = re_hash_map_iter_next(archetype->edges, iter)) {
+        archetype_edge_t edge = re_hash_map_get_index_value(archetype->edges, iter);
+        if (edge.add->id == archetype->id) {
+            continue;
+        }
+        ecs_run_archetype(ecs, edge.add, info);
+    }
+}
+
 void ecs_run(ecs_t *ecs, system_group_t group) {
     if (group >= re_dyn_arr_count(ecs->system_groups)) {
         re_log_error("Running an invalid system group.");
     }
     for (u32_t i = 0; i < re_dyn_arr_count(ecs->system_groups[group]); i++) {
         system_info_t info = ecs->system_groups[group][i];
+
+        if (!re_hash_map_has(ecs->archetype_map, info.component_type)) {
+            re_log_debug("Can't find archetype.");
+            for (u32_t j = 0; j < re_dyn_arr_count(info.component_type); j++) {
+                re_log_debug("%d", info.component_type[j]);
+            }
+
+            return;
+        }
+
+        archetype_t *base = re_hash_map_get(ecs->archetype_map, info.component_type);
+        ecs_run_archetype(ecs, base, info);
     }
 }
 
@@ -279,15 +316,9 @@ static entity_record_t move_entity(ecs_t *ecs, u32_t column, archetype_t *old, a
 
         // It's fine to do a linear search since it's such a small list of components.
         u32_t new_row = re_hash_map_get(new->component_map, old->type[i]);
-        for (u32_t j = 0; j < re_dyn_arr_count(new->type); j++) {
-            if (old->type[i] != new->type[j]) {
-                continue;
-            }
-
-            void *old_comp_pos = old->components[i] + column * comp_size;
-            void *new_comp_pos = new->components[j] + new_column * comp_size;
-            memcpy(new_comp_pos, old_comp_pos, comp_size);
-        }
+        void *old_comp_pos = old->components[i] + column * comp_size;
+        void *new_comp_pos = new->components[new_row] + new_column * comp_size;
+        memcpy(new_comp_pos, old_comp_pos, comp_size);
     }
 
     entity_record_t record = {
@@ -300,6 +331,10 @@ static entity_record_t move_entity(ecs_t *ecs, u32_t column, archetype_t *old, a
 
 void _entity_add_component_impl(entity_t ent, re_str_t component, const void *data) {
     ecs_t *ecs = ent.ecs;
+    if (!re_hash_map_has(ecs->component_map, component)) {
+        re_log_error("Component '%.*s' not registered.", re_str_arg(component));
+        return;
+    }
     entity_record_t record = re_hash_map_get(ecs->entity_map, ent.id);
     archetype_t *curr = record.archetype;
     component_t *comp = re_hash_map_get(ecs->component_map, component);
@@ -322,15 +357,9 @@ void _entity_add_component_impl(entity_t ent, re_str_t component, const void *da
     archetype_make_edges(ecs, new);
 
     entity_record_t new_record = move_entity(ecs, record.column, curr, new);
-    for (u32_t i = 0; i < re_dyn_arr_count(new->type); i++) {
-        if (new->type[i] != comp->id) {
-            continue;
-        }
-
-        void *comp_pos = new->components[i] + new_record.column * comp->size;
-        memcpy(comp_pos, data, comp->size);
-        break;
-    }
+    u32_t index = re_hash_map_get(new->component_map, comp->id);
+    void *comp_pos = new->components[index] + new_record.column * comp->size;
+    memcpy(comp_pos, data, comp->size);
 
     re_hash_map_set(ecs->entity_map, ent.id, new_record);
 }
@@ -348,15 +377,12 @@ const void *_entity_get_component_impl(entity_t ent, re_str_t component) {
     entity_record_t record = re_hash_map_get(ecs->entity_map, ent.id);
     component_t *comp = re_hash_map_get(ecs->component_map, component);
 
-    for (u32_t i = 0; i < re_dyn_arr_count(record.archetype->type); i++) {
-        if (record.archetype->type[i] != comp->id) {
-            continue;
-        }
-
-        return record.archetype->components[i] + record.column * comp->size;
+    if (!re_hash_map_has(record.archetype->component_map, comp->id)) {
+        return NULL;
     }
 
-    return NULL;
+    u32_t index = re_hash_map_get(record.archetype->component_map, comp->id);
+    return record.archetype->components[index] + record.column * comp->size;
 }
 #define entity_get_component(ENTITY, COMPONENT) _entity_get_component_impl((ENTITY), re_str_lit(#COMPONENT))
 
@@ -367,35 +393,19 @@ system_group_t ecs_system_group(ecs_t *ecs) {
 
 #define ecs_iter(...) {0}
 
-static void print_graph(ecs_t *ecs, archetype_t *base, u32_t spaces) {
-    char buffer[512] = {0};
-    for (u32_t i = 0; i < spaces; i++) {
-        buffer[i] = ' ';
-    }
-
-    re_log_debug("%s%d", buffer, base->id);
-
-    for (re_hash_map_iter_t iter = re_hash_map_iter_get(base->edges);
-        re_hash_map_iter_valid(iter);
-        iter = re_hash_map_iter_next(base->edges, iter)) {
-        archetype_edge_t edge = re_hash_map_get_index_value(base->edges, iter);
-        if (edge.add->id == base->id) {
-            continue;
-        }
-        print_graph(ecs, edge.add, spaces + 2);
-    }
-}
-
 /*=========================*/
 // User application
 /*=========================*/
 
 typedef re_vec2_t position_t;
 typedef re_vec2_t velocity_t;
+typedef re_vec2_t scale_t;
 
 void move_system(ecs_iter_t iter) {
-    position_t *pos = ecs_iter(iter, position_t);
-    velocity_t *vel = ecs_iter(iter, velocity_t);
+    /* position_t *pos = ecs_iter(iter, position_t); */
+    /* velocity_t *vel = ecs_iter(iter, velocity_t); */
+    position_t *pos = iter.components[0];
+    velocity_t *vel = iter.components[1];
 
     for (u32_t i = 0; i < iter.count; i++) {
         pos[i] = re_vec2_add(pos[i], vel[i]);
@@ -410,6 +420,7 @@ i32_t main(void) {
 
     ecs_register_component(ecs, position_t);
     ecs_register_component(ecs, velocity_t);
+    ecs_register_component(ecs, scale_t);
 
     system_group_t update_group = ecs_system_group(ecs);
     ecs_register_system(ecs, update_group, move_system, velocity_t, position_t);
@@ -417,12 +428,29 @@ i32_t main(void) {
     entity_t bob = ecs_entity(ecs);
     entity_add_component(bob, position_t, {{1, 2}});
     entity_add_component(bob, velocity_t, {{1, 2}});
+    entity_add_component(bob, scale_t, {{2, 2}});
+
+    entity_t ivory = ecs_entity(ecs);
+    entity_add_component(ivory, position_t, {{0, 0}});
+    entity_add_component(ivory, velocity_t, {{5, 4}});
+
+    entity_t steve = ecs_entity(ecs);
+    entity_add_component(steve, position_t, {{0, 0}});
 
     // TODO: Add slot map so we don't keep dead entities in archetype array.
 
     ecs_run(ecs, update_group);
 
-    print_graph(ecs, &ecs->archetype_list[0], 0);
+    const position_t *pos = entity_get_component(bob, position_t);
+    re_log_debug("%f, %f", pos->x, pos->y);
+
+    pos = entity_get_component(ivory, position_t);
+    re_log_debug("%f, %f", pos->x, pos->y);
+
+    pos = entity_get_component(steve, position_t);
+    re_log_debug("%f, %f", pos->x, pos->y);
+
+    /* print_graph(ecs, &ecs->archetype_list[0], 0); */
 
     ecs_free(&ecs);
 
