@@ -1,4 +1,4 @@
-BIN := bin/template
+BIN := bin/ecs
 
 CC := gcc
 CFLAGS := -std=gnu99
