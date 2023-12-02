@@ -44,6 +44,7 @@ typedef struct system_info_t system_info_t;
 struct system_info_t {
     system_t func;
     type_t component_type;
+    type_t unordered_type;
 };
 
 typedef struct ecs_t ecs_t;
@@ -63,7 +64,7 @@ struct ecs_t {
 
 struct ecs_iter_t {
     const ecs_t *ecs;
-    re_dyn_arr_t(void *) const components;
+    re_hash_map_t(u32_t, re_dyn_arr_t(void)) components;
     const u32_t count;
 };
 
@@ -172,7 +173,7 @@ void _ecs_register_component_impl(ecs_t *ecs, re_str_t name, u64_t size) {
 #define ecs_register_component(ECS, COMPONENT) _ecs_register_component_impl((ECS), re_str_lit(#COMPONENT), sizeof(COMPONENT))
 
 void _ecs_register_system_impl(ecs_t *ecs, system_group_t group, system_t system, re_str_t components) {
-    type_t type = NULL;
+    type_t unordered_type = NULL;
     for (u32_t i = 0; i < components.len; i++) {
         // Skip whitespace.
         while (components.str[i] == ' ' || components.str[i] == '\t' || components.str[i] == '\n') {
@@ -191,13 +192,17 @@ void _ecs_register_system_impl(ecs_t *ecs, system_group_t group, system_t system
             return;
         }
 
-        re_dyn_arr_push(type, re_hash_map_get(ecs->component_map, comp_name)->id);
+        re_dyn_arr_push(unordered_type, re_hash_map_get(ecs->component_map, comp_name)->id);
     }
-    qsort(type, re_dyn_arr_count(type), sizeof(component_id_t), type_sort_compare);
+
+    type_t ordererd_type = NULL;
+    re_dyn_arr_push_arr(ordererd_type, unordered_type, re_dyn_arr_count(unordered_type));
+    qsort(ordererd_type, re_dyn_arr_count(ordererd_type), sizeof(component_id_t), type_sort_compare);
 
     system_info_t info = {
         .func = system,
-        .component_type = type
+        .component_type = ordererd_type,
+        .unordered_type = unordered_type
     };
 
     re_dyn_arr_push(ecs->system_groups[group], info);
@@ -210,10 +215,11 @@ static void ecs_run_archetype(ecs_t *ecs, archetype_t *archetype, system_info_t 
         .components = NULL,
         .count = re_dyn_arr_count(archetype->components[0])
     };
-    for (u32_t i = 0; i < re_dyn_arr_count(info.component_type); i++) {
-        u32_t index = re_hash_map_get(archetype->component_map, info.component_type[i]);
+    for (u32_t i = 0; i < re_dyn_arr_count(info.unordered_type); i++) {
+        u32_t index = re_hash_map_get(archetype->component_map, info.unordered_type[i]);
         void *comp_array = archetype->components[index];
-        re_dyn_arr_push(iter.components, comp_array);
+        re_hash_map_set(iter.components, i, comp_array);
+        /* re_dyn_arr_push(iter.components, comp_array); */
     }
 
     info.func(iter);
@@ -391,7 +397,9 @@ system_group_t ecs_system_group(ecs_t *ecs) {
     return re_dyn_arr_count(ecs->system_groups) - 1;
 }
 
-#define ecs_iter(...) {0}
+void *ecs_iter(ecs_iter_t iter, u32_t index) {
+    return re_hash_map_get(iter.components, index);
+}
 
 /*=========================*/
 // User application
@@ -402,13 +410,20 @@ typedef re_vec2_t velocity_t;
 typedef re_vec2_t scale_t;
 
 void move_system(ecs_iter_t iter) {
-    /* position_t *pos = ecs_iter(iter, position_t); */
-    /* velocity_t *vel = ecs_iter(iter, velocity_t); */
-    position_t *pos = iter.components[0];
-    velocity_t *vel = iter.components[1];
+    // Get them in the order they were requested
+    // when regestering the system.
+    velocity_t *vel = ecs_iter(iter, 0);
+    position_t *pos = ecs_iter(iter, 1);
 
     for (u32_t i = 0; i < iter.count; i++) {
         pos[i] = re_vec2_add(pos[i], vel[i]);
+    }
+}
+
+void print_system(ecs_iter_t iter) {
+    position_t *pos = ecs_iter(iter, 0);
+    for (u32_t i = 0; i < iter.count; i++) {
+        re_log_debug("%d: %f, %f", i, pos[i].x, pos[i].y);
     }
 }
 
@@ -416,6 +431,8 @@ i32_t main(void) {
     re_init();
     re_arena_t *arena = re_arena_create(GB(8));
 
+    // TODO: Add slot map so we don't keep dead entities in archetype array.
+    // TODO: Edge case where system doesn't take any components.
     ecs_t *ecs = ecs_init();
 
     ecs_register_component(ecs, position_t);
@@ -425,32 +442,25 @@ i32_t main(void) {
     system_group_t update_group = ecs_system_group(ecs);
     ecs_register_system(ecs, update_group, move_system, velocity_t, position_t);
 
-    entity_t bob = ecs_entity(ecs);
-    entity_add_component(bob, position_t, {{1, 2}});
-    entity_add_component(bob, velocity_t, {{1, 2}});
-    entity_add_component(bob, scale_t, {{2, 2}});
+    system_group_t other = ecs_system_group(ecs);
+    ecs_register_system(ecs, other, print_system, position_t);
 
-    entity_t ivory = ecs_entity(ecs);
-    entity_add_component(ivory, position_t, {{0, 0}});
-    entity_add_component(ivory, velocity_t, {{5, 4}});
+    f32_t entity_create_time = re_os_get_time();
+    for (u32_t i = 0; i < 8; i++) {
+        entity_t bob = ecs_entity(ecs);
+        entity_add_component(bob, position_t, {{0, 0}});
+        entity_add_component(bob, velocity_t, {{i, i * 2}});
+    }
+    entity_create_time = re_os_get_time() - entity_create_time;
 
-    entity_t steve = ecs_entity(ecs);
-    entity_add_component(steve, position_t, {{0, 0}});
-
-    // TODO: Add slot map so we don't keep dead entities in archetype array.
-
+    f32_t run_time = re_os_get_time();
     ecs_run(ecs, update_group);
+    run_time = re_os_get_time() - run_time;
 
-    const position_t *pos = entity_get_component(bob, position_t);
-    re_log_debug("%f, %f", pos->x, pos->y);
+    ecs_run(ecs, other);
 
-    pos = entity_get_component(ivory, position_t);
-    re_log_debug("%f, %f", pos->x, pos->y);
-
-    pos = entity_get_component(steve, position_t);
-    re_log_debug("%f, %f", pos->x, pos->y);
-
-    /* print_graph(ecs, &ecs->archetype_list[0], 0); */
+    re_log_debug("Entity create time: %f ms", entity_create_time * 1000.0f);
+    re_log_debug("Run time: %f ms", run_time * 1000.0f);
 
     ecs_free(&ecs);
 
