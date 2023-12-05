@@ -33,8 +33,7 @@ i32_t main(void) {
     re_init();
     re_arena_t *arena = re_arena_create(GB(8));
 
-    // TODO: Edge case where system doesn't take any components.
-    const u32_t entity_count = 16;
+    const u32_t entity_count = 1024;
     ecs_t *ecs = ecs_init();
 
     ecs_register_component(ecs, position_t);
@@ -62,14 +61,21 @@ i32_t main(void) {
     ecs_run(ecs, update_group);
     run_time = re_os_get_time() - run_time;
 
+    f32_t add_comp_time = re_os_get_time();
     for (u32_t i = 0; i < entity_count; i++) {
         entity_add_component(ents[i], scale_t, {0});
     }
+
+    /* for (u32_t i = entity_count - 1; i > 0; i--) { */
+    /*     entity_add_component(ents[i], scale_t, {0}); */
+    /* } */
+    add_comp_time = re_os_get_time() - add_comp_time;
 
     ecs_run(ecs, other);
 
     re_log_info("Entity create time: %f ms, %f ms/entity", entity_create_time * 1000.0f, entity_create_time * 1000.0f / entity_count);
     re_log_info("Run time: %f ms", run_time * 1000.0f);
+    re_log_info("Add comp time: %f ms", add_comp_time * 1000.0f);
 
     ecs_free(&ecs);
 
