@@ -66,11 +66,9 @@ static entity_record_t move_entity(ecs_t *ecs, u32_t column, archetype_t *old, a
         u32_t comp_size = ecs->component_list[comp_id].size;
 
         u32_t new_row = re_hash_map_get(new->component_map, old->type[i]);
-        void *old_comp_pos = old->components[i] + column * comp_size;
         void *new_comp_pos = new->components[new_row] + new_column * comp_size;
-        memcpy(new_comp_pos, old_comp_pos, comp_size);
 
-        _re_dyn_arr_remove_arr_impl((void **) &old->components[i], 1, column, NULL);
+        _re_dyn_arr_remove_arr_impl((void **) &old->components[i], 1, column, new_comp_pos);
     }
 
     for (u32_t i = column + 1; i < re_dyn_arr_count(old->entities); i++) {
