@@ -19,6 +19,7 @@ void move_system(ecs_iter_t iter) {
 
     for (u32_t i = 0; i < iter.count; i++) {
         pos[i] = re_vec2_add(pos[i], vel[i]);
+        re_log_debug("i = %u", i);
     }
 }
 
@@ -47,11 +48,15 @@ i32_t main(void) {
     system_group_t other = ecs_system_group(ecs);
     ecs_register_system(ecs, other, print_system, position_t);
 
+    re_dyn_arr_t(entity_t) ents = NULL;
+
     f32_t entity_create_time = re_os_get_time();
     for (u32_t i = 0; i < entity_count; i++) {
         entity_t bob = ecs_entity(ecs);
         entity_add_component(bob, position_t, {{0, 0}});
         entity_add_component(bob, velocity_t, {{i, i * 2}});
+        entity_add_component(bob, scale_t, {0});
+        re_dyn_arr_push(ents, bob);
     }
     entity_create_time = re_os_get_time() - entity_create_time;
 

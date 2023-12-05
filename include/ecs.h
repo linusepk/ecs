@@ -38,7 +38,7 @@ extern entity_t ecs_entity(ecs_t *ecs);
 #define entity_add_component(ENTITY, COMPONENT, ...) ({ \
         COMPONENT temp_comp = (COMPONENT) __VA_ARGS__; \
         _entity_add_component_impl((ENTITY), re_str_lit(#COMPONENT), &temp_comp); \
-        })
+    })
 #define entity_get_component(ENTITY, COMPONENT) _entity_get_component_impl((ENTITY), re_str_lit(#COMPONENT))
 
 extern void _ecs_register_component_impl(ecs_t *ecs, re_str_t name, u64_t size);

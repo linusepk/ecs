@@ -35,6 +35,7 @@ struct archetype_t {
     re_dyn_arr_t(re_dyn_arr_t(void)) components;
     re_hash_map_t(component_id_t, u32_t) component_map;
     re_dyn_arr_t(entity_id_t) entities;
+    u32_t last_run_touch;
 };
 
 typedef struct entity_record_t entity_record_t;
@@ -55,6 +56,8 @@ struct ecs_t {
     re_hash_map_t(entity_id_t, entity_record_t) entity_map;
 
     re_dyn_arr_t(re_dyn_arr_t(system_info_t)) system_groups;
+
+    u32_t run_frame;
 };
 
 static inline i32_t type_sort_compare(const void *a, const void *b) {
