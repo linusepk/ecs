@@ -1,3 +1,5 @@
-# Template
+# ECS
 
-Template project to quickly set up new projects.
+Archetype based ECS.
+
+Heavily inspired by flecs and [Sanders Mertens articles](https://ajmmertens.medium.com/).
