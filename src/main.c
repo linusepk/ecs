@@ -32,6 +32,7 @@ struct archetype_t {
     re_hash_map_t(component_id_t, archetype_edge_t) edges;
     re_dyn_arr_t(re_dyn_arr_t(void)) components;
     re_hash_map_t(component_id_t, u32_t) component_map;
+    re_dyn_arr_t(entity_id_t) entities;
 };
 
 typedef struct entity_record_t entity_record_t;
@@ -243,10 +244,10 @@ void ecs_run(ecs_t *ecs, system_group_t group) {
         system_info_t info = ecs->system_groups[group][i];
 
         if (!re_hash_map_has(ecs->archetype_map, info.component_type)) {
-            re_log_debug("Can't find archetype.");
-            for (u32_t j = 0; j < re_dyn_arr_count(info.component_type); j++) {
-                re_log_debug("%d", info.component_type[j]);
-            }
+            /* re_log_debug("Can't find archetype."); */
+            /* for (u32_t j = 0; j < re_dyn_arr_count(info.component_type); j++) { */
+            /*     re_log_debug("%d", info.component_type[j]); */
+            /* } */
 
             return;
         }
@@ -261,9 +262,10 @@ entity_t ecs_entity(ecs_t *ecs) {
 
     entity_record_t record = {
         .archetype = &ecs->archetype_list[0],
-        .column = 0
+        .column = re_dyn_arr_count(ecs->archetype_list[0].entities)
     };
     re_hash_map_set(ecs->entity_map, id, record);
+    re_dyn_arr_push(ecs->archetype_list[0].entities, id);
 
     return (entity_t) {ecs, id};
 }
@@ -310,22 +312,27 @@ static void archetype_make_edges(ecs_t *ecs, archetype_t *archetype) {
 }
 
 static entity_record_t move_entity(ecs_t *ecs, u32_t column, archetype_t *old, archetype_t *new) {
-    u32_t new_column = re_dyn_arr_count(new->components[0]);
+    u32_t new_column = re_dyn_arr_count(new->entities);
 
     for (u32_t i = 0; i < re_dyn_arr_count(new->type); i++) {
         re_dyn_arr_reserve(new->components[i], 1);
     }
 
     for (u32_t i = 0; i < re_dyn_arr_count(old->type); i++) {
+
         u32_t comp_id = old->type[i];
         u32_t comp_size = ecs->component_list[comp_id].size;
 
-        // It's fine to do a linear search since it's such a small list of components.
         u32_t new_row = re_hash_map_get(new->component_map, old->type[i]);
         void *old_comp_pos = old->components[i] + column * comp_size;
         void *new_comp_pos = new->components[new_row] + new_column * comp_size;
         memcpy(new_comp_pos, old_comp_pos, comp_size);
+
+        _re_dyn_arr_remove_arr_impl((void **) &old->components[i], 1, column, NULL);
     }
+
+    entity_id_t ent_id = re_dyn_arr_remove(old->entities, column);
+    re_dyn_arr_push(new->entities, ent_id);
 
     entity_record_t record = {
         .archetype = new,
@@ -431,8 +438,8 @@ i32_t main(void) {
     re_init();
     re_arena_t *arena = re_arena_create(GB(8));
 
-    // TODO: Add slot map so we don't keep dead entities in archetype array.
     // TODO: Edge case where system doesn't take any components.
+    const u32_t entity_count = 1024*8;
     ecs_t *ecs = ecs_init();
 
     ecs_register_component(ecs, position_t);
@@ -446,7 +453,7 @@ i32_t main(void) {
     ecs_register_system(ecs, other, print_system, position_t);
 
     f32_t entity_create_time = re_os_get_time();
-    for (u32_t i = 0; i < 8; i++) {
+    for (u32_t i = 0; i < entity_count; i++) {
         entity_t bob = ecs_entity(ecs);
         entity_add_component(bob, position_t, {{0, 0}});
         entity_add_component(bob, velocity_t, {{i, i * 2}});
@@ -459,7 +466,7 @@ i32_t main(void) {
 
     ecs_run(ecs, other);
 
-    re_log_debug("Entity create time: %f ms", entity_create_time * 1000.0f);
+    re_log_debug("Entity create time: %f ms, %f ms/entity", entity_create_time * 1000.0f, entity_create_time * 1000.0f / entity_count);
     re_log_debug("Run time: %f ms", run_time * 1000.0f);
 
     ecs_free(&ecs);
