@@ -19,14 +19,13 @@ void move_system(ecs_iter_t iter) {
 
     for (u32_t i = 0; i < iter.count; i++) {
         pos[i] = re_vec2_add(pos[i], vel[i]);
-        re_log_debug("i = %u", i);
     }
 }
 
 void print_system(ecs_iter_t iter) {
     position_t *pos = ecs_iter(iter, 0);
     for (u32_t i = 0; i < iter.count; i++) {
-        re_log_debug("%d: %f, %f", i, pos[i].x, pos[i].y);
+        re_log_info("Position (%d): %f, %f", i, pos[i].x, pos[i].y);
     }
 }
 
@@ -55,7 +54,6 @@ i32_t main(void) {
         entity_t bob = ecs_entity(ecs);
         entity_add_component(bob, position_t, {{0, 0}});
         entity_add_component(bob, velocity_t, {{i, i * 2}});
-        entity_add_component(bob, scale_t, {0});
         re_dyn_arr_push(ents, bob);
     }
     entity_create_time = re_os_get_time() - entity_create_time;
@@ -64,10 +62,14 @@ i32_t main(void) {
     ecs_run(ecs, update_group);
     run_time = re_os_get_time() - run_time;
 
+    for (u32_t i = 0; i < entity_count; i++) {
+        entity_add_component(ents[i], scale_t, {0});
+    }
+
     ecs_run(ecs, other);
 
-    re_log_debug("Entity create time: %f ms, %f ms/entity", entity_create_time * 1000.0f, entity_create_time * 1000.0f / entity_count);
-    re_log_debug("Run time: %f ms", run_time * 1000.0f);
+    re_log_info("Entity create time: %f ms, %f ms/entity", entity_create_time * 1000.0f, entity_create_time * 1000.0f / entity_count);
+    re_log_info("Run time: %f ms", run_time * 1000.0f);
 
     ecs_free(&ecs);
 
