@@ -61,22 +61,21 @@ i32_t main(void) {
     ecs_run(ecs, update_group);
     run_time = re_os_get_time() - run_time;
 
-    f32_t add_comp_time = re_os_get_time();
-    for (u32_t i = 0; i < entity_count / 2; i++) {
-        entity_destroy(ents[i]);
-        /* entity_add_component(ents[i], scale_t, {0}); */
+    for (u32_t i = 0; i < entity_count; i++) {
+        entity_remove_component(ents[i], velocity_t);
     }
 
-    /* for (u32_t i = entity_count - 1; i > 0; i--) { */
-    /*     entity_add_component(ents[i], scale_t, {0}); */
-    /* } */
-    add_comp_time = re_os_get_time() - add_comp_time;
+    f32_t destroy_time = re_os_get_time();
+    for (u32_t i = 0; i < entity_count / 2; i++) {
+        entity_destroy(ents[i]);
+    }
+    destroy_time = re_os_get_time() - destroy_time;
 
     ecs_run(ecs, other);
 
     re_log_info("Entity create time: %f ms, %f ms/entity", entity_create_time * 1000.0f, entity_create_time * 1000.0f / entity_count);
     re_log_info("Run time: %f ms", run_time * 1000.0f);
-    re_log_info("Add comp time: %f ms", add_comp_time * 1000.0f);
+    re_log_info("Destroy time: %f ms", destroy_time * 1000.0f);
 
     ecs_free(&ecs);
 

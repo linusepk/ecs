@@ -61,7 +61,8 @@ static entity_record_t move_entity(ecs_t *ecs, u32_t column, archetype_t *old, a
         re_dyn_arr_reserve(new->components[i], 1);
     }
 
-    for (u32_t i = 0; i < re_dyn_arr_count(old->type); i++) {
+    u32_t min_comp_type = re_min(re_dyn_arr_count(old->type), re_dyn_arr_count(new->type));
+    for (u32_t i = 0; i < min_comp_type; i++) {
         u32_t comp_id = old->type[i];
         u32_t comp_size = ecs->component_list[comp_id].size;
 
@@ -135,6 +136,22 @@ const void *_entity_get_component_impl(entity_t ent, re_str_t component) {
 
     u32_t index = re_hash_map_get(record.archetype->component_map, comp->id);
     return record.archetype->components[index] + record.column * comp->size;
+}
+
+void _entity_remove_component_impl(entity_t ent, re_str_t component) {
+    ecs_t *ecs = ent.ecs;
+    entity_record_t record = re_hash_map_get(ecs->entity_map, ent.id);
+    archetype_t *curr = record.archetype;
+    component_t *comp = re_hash_map_get(ecs->component_map, component);
+
+    archetype_t *new = re_hash_map_get(curr->edges, comp->id).remove;
+    if (new == NULL) {
+        re_log_warn("Entity doesn't have component '%.*s'.", (i32_t) component.len, component.str);
+        return;
+    }
+
+    entity_record_t new_record = move_entity(ecs, record.column, curr, new);
+    re_hash_map_set(ecs->entity_map, ent.id, new_record);
 }
 
 void entity_destroy(entity_t entity) {
