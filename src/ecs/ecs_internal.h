@@ -46,14 +46,15 @@ struct entity_record_t {
 
 struct ecs_t {
     u32_t entity_index;
+    re_dyn_arr_t(entity_id_t) free_entity_ids;
+    re_hash_map_t(entity_id_t, entity_record_t) entity_map;
+    re_hash_map_t(entity_id_t, u32_t) generation_map;
 
     re_dyn_arr_t(archetype_t) archetype_list;
     re_hash_map_t(type_t, archetype_t *) archetype_map;
 
     re_dyn_arr_t(component_t) component_list;
     re_hash_map_t(re_str_t, component_t *) component_map;
-
-    re_hash_map_t(entity_id_t, entity_record_t) entity_map;
 
     re_dyn_arr_t(re_dyn_arr_t(system_info_t)) system_groups;
 

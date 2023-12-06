@@ -21,6 +21,7 @@ typedef struct entity_t entity_t;
 struct entity_t {
     ecs_t *ecs;
     entity_id_t id;
+    u32_t generation;
 };
 
 extern ecs_t *ecs_init(void);

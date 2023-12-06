@@ -1,7 +1,19 @@
 #include "ecs/ecs_internal.h"
 
+static b8_t entity_valid(entity_t ent) {
+    u32_t gen = re_hash_map_get(ent.ecs->generation_map, ent.id);
+    return ent.generation == gen;
+}
+
 entity_t ecs_entity(ecs_t *ecs) {
-    entity_id_t id = ecs->entity_index++;
+    entity_id_t id;
+    if (re_dyn_arr_count(ecs->free_entity_ids) == 0) {
+        id = ecs->entity_index++;
+    } else {
+        id = re_dyn_arr_pop(ecs->free_entity_ids);
+    }
+
+    u32_t generation = re_hash_map_get(ecs->generation_map, id);
 
     entity_record_t record = {
         .archetype = &ecs->archetype_list[0],
@@ -10,7 +22,7 @@ entity_t ecs_entity(ecs_t *ecs) {
     re_hash_map_set(ecs->entity_map, id, record);
     re_dyn_arr_push(ecs->archetype_list[0].entities, id);
 
-    return (entity_t) {ecs, id};
+    return (entity_t) {ecs, id, generation};
 }
 
 static archetype_t *archetype_new(ecs_t *ecs, type_t type) {
@@ -155,6 +167,10 @@ void _entity_remove_component_impl(entity_t ent, re_str_t component) {
 }
 
 void entity_destroy(entity_t entity) {
+    if (!entity_valid(entity)) {
+        return;
+    }
+
     ecs_t *ecs = entity.ecs;
 
     entity_record_t record = re_hash_map_get(ecs->entity_map, entity.id);
@@ -167,5 +183,9 @@ void entity_destroy(entity_t entity) {
     entity_id_t last_ent_id = re_dyn_arr_last(archetype->entities);
     re_hash_map_set(ecs->entity_map, last_ent_id, record);
 
-    re_dyn_arr_remove_fast(archetype->entities, record.column);
+    entity_id_t removed = re_dyn_arr_remove_fast(archetype->entities, record.column);
+    re_dyn_arr_push(ecs->free_entity_ids, removed);
+
+    u32_t gen = re_hash_map_get(ecs->generation_map, entity.id);
+    re_hash_map_set(ecs->generation_map, entity.id, gen + 1);
 }
