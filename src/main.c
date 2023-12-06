@@ -62,8 +62,9 @@ i32_t main(void) {
     run_time = re_os_get_time() - run_time;
 
     f32_t add_comp_time = re_os_get_time();
-    for (u32_t i = 0; i < entity_count; i++) {
-        entity_add_component(ents[i], scale_t, {0});
+    for (u32_t i = 0; i < entity_count / 2; i++) {
+        entity_destroy(ents[i]);
+        /* entity_add_component(ents[i], scale_t, {0}); */
     }
 
     /* for (u32_t i = entity_count - 1; i > 0; i--) { */

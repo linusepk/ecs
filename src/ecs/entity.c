@@ -77,7 +77,6 @@ static entity_record_t move_entity(ecs_t *ecs, u32_t column, archetype_t *old, a
     entity_id_t ent_id = re_dyn_arr_remove_fast(old->entities, column);
     re_dyn_arr_push(new->entities, ent_id);
 
-
     entity_record_t record = {
         .archetype = new,
         .column = new_column
@@ -136,4 +135,20 @@ const void *_entity_get_component_impl(entity_t ent, re_str_t component) {
 
     u32_t index = re_hash_map_get(record.archetype->component_map, comp->id);
     return record.archetype->components[index] + record.column * comp->size;
+}
+
+void entity_destroy(entity_t entity) {
+    ecs_t *ecs = entity.ecs;
+
+    entity_record_t record = re_hash_map_get(ecs->entity_map, entity.id);
+    archetype_t *archetype = record.archetype;
+
+    for (u32_t i = 0; i < re_dyn_arr_count(archetype->type); i++) {
+        _re_dyn_arr_remove_fast_impl((void **) &archetype->components[i], record.column, NULL);
+    }
+
+    entity_id_t last_ent_id = re_dyn_arr_last(archetype->entities);
+    re_hash_map_set(ecs->entity_map, last_ent_id, record);
+
+    re_dyn_arr_remove_fast(archetype->entities, record.column);
 }
