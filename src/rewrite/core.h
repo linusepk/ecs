@@ -68,17 +68,76 @@ struct archetype_t {
 
     type_t type;
     re_hash_map_t(ecs_id_t, archetype_edge_t) edge_map;
+    re_dyn_arr_t(ecs_id_t) ids;
+    re_dyn_arr_t(re_dyn_arr_t(void)) storage;
+};
+
+typedef struct archetype_record_t archetype_record_t;
+struct archetype_record_t {
+    ecs_id_t id;
+    archetype_t *archetype;
+    u32_t column;
 };
 
 typedef struct archetype_graph_t archetype_graph_t;
 struct archetype_graph_t {
     re_dyn_arr_t(archetype_t) archetypes;
     re_hash_map_t(type_t, archetype_t *) archetype_map;
+    re_hash_map_t(ecs_id_t, archetype_record_t) id_map;
+    re_hash_map_t(ecs_id_t, u64_t) storage_map;
 };
 
-extern void archetype_free(archetype_t *archetype);
+extern archetype_graph_t archetype_graph_init(void);
 extern void archetype_graph_free(archetype_graph_t *graph);
-extern void archetype_graph_add(archetype_graph_t *graph, type_t type);
+extern void archetype_free(archetype_t *archetype);
 
-extern void archetype_graph_print(archetype_graph_t graph);
+extern void archetype_graph_record_add(archetype_graph_t *graph, archetype_record_t record, ecs_id_t id);
+extern void archetype_graph_record_remove(archetype_graph_t *graph, archetype_record_t record, ecs_id_t id);
+extern void archetype_add_storage_id(archetype_graph_t *graph, ecs_id_t id, u64_t size);
+extern void *archetype_get_storage_id(archetype_graph_t graph, archetype_record_t record, ecs_id_t id);
+
+extern archetype_t *archetype_graph_get(archetype_graph_t *graph, type_t type);
+extern archetype_record_t archetype_graph_get_id(archetype_graph_t *graph, ecs_id_t id);
+
 extern void archetype_graph_print_all(archetype_graph_t graph);
+
+/*=========================*/
+// ECS
+/*=========================*/
+
+typedef ecs_id_t ecs_entity_t;
+
+typedef struct component_t component_t;
+struct component_t {
+    ecs_id_t id;
+    u64_t size;
+};
+
+typedef struct ecs_t ecs_t;
+struct ecs_t {
+    id_handler_t id_handler;
+    re_hash_map_t(ecs_id_t, re_str_t) id_name_map;
+    re_hash_map_t(re_str_t, component_t) component_map;
+    archetype_graph_t archetype_graph;
+};
+
+extern ecs_t *ecs_init(void);
+extern void ecs_free(ecs_t *ecs);
+
+extern ecs_entity_t ecs_entity_new(ecs_t *ecs);
+extern void ecs_entity_destroy(ecs_t *ecs, ecs_entity_t entity);
+extern b8_t ecs_entity_alive(ecs_t *ecs, ecs_entity_t entity);
+extern void ecs_entity_name_set(ecs_t *ecs, ecs_entity_t entity, re_str_t name);
+extern re_str_t ecs_entity_name_get(ecs_t *ecs, ecs_entity_t entity);
+extern void ecs_entity_add(ecs_t *ecs, ecs_entity_t entity, ecs_entity_t id);
+extern void ecs_entity_remove(ecs_t *ecs, ecs_entity_t entity, ecs_entity_t id);
+extern void ecs_entity_storage(ecs_t *ecs, ecs_entity_t entity, u64_t size);
+extern void *ecs_entity_storage_get(ecs_t *ecs, ecs_entity_t entity, ecs_id_t id);
+
+#define ecs_register_component(ECS, T) _ecs_register_component_impl((ECS), sizeof(T), re_str_lit(#T))
+
+extern void _ecs_register_component_impl(ecs_t *ecs, u64_t size, re_str_t name);
+
+
+
+extern void archetype_graph_print(ecs_t *ecs, archetype_graph_t graph);

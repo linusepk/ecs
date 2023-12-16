@@ -46,7 +46,6 @@ static i32_t type_id_index(const type_t type, ecs_id_t id) {
         return -1;
     }
 
-
     return ((ptr_t) ptr - (ptr_t) type) / sizeof(ecs_id_t);
 }
 
@@ -56,7 +55,7 @@ void type_remove(type_t *type, ecs_id_t id) {
         return;
     }
 
-    re_dyn_arr_remove(type, index);
+    re_dyn_arr_remove(*type, index);
 }
 
 b8_t type_has(const type_t type, ecs_id_t id) {

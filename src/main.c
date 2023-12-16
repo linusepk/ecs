@@ -2,44 +2,61 @@
 
 #include "rewrite/core.h"
 
+typedef re_vec2_t position_t;
+typedef re_vec2_t velocity_t;
+
 i32_t main(void) {
     re_init();
     re_arena_t *arena = re_arena_create(GB(8));
 
-    id_handler_t handler = {0};
-    ecs_id_t pos_id = id_handler_new(&handler);
-    ecs_id_t vel_id = id_handler_new(&handler);
-    ecs_id_t rot_id = id_handler_new(&handler);
+    ecs_t *ecs = ecs_init();
 
-    type_t bob = NULL;
-    type_add(&bob, pos_id);
-    type_add(&bob, vel_id);
+    ecs_register_component(ecs, position_t);
+    ecs_register_component(ecs, velocity_t);
 
-    type_t jerry = NULL;
-    type_add(&jerry, pos_id);
+    ecs_entity_t foo = ecs_entity_new(ecs);
+    ecs_entity_storage(ecs, foo, sizeof(i32_t));
+    ecs_entity_name_set(ecs, foo, re_str_lit("Foo"));
+    ecs_entity_t bar = ecs_entity_new(ecs);
+    ecs_entity_name_set(ecs, bar, re_str_lit("Bar"));
+    ecs_entity_t baz = ecs_entity_new(ecs);
+    ecs_entity_name_set(ecs, baz, re_str_lit("Baz"));
+    ecs_entity_t qux = ecs_entity_new(ecs);
+    ecs_entity_name_set(ecs, qux, re_str_lit("Qux"));
 
-    type_t steve = NULL;
-    type_add(&steve, vel_id);
+    ecs_entity_t bob = ecs_entity_new(ecs);
+    ecs_entity_name_set(ecs, bob, re_str_lit("Bob"));
+    ecs_entity_add(ecs, bob, foo);
 
-    type_t terry = NULL;
-    type_add(&terry, pos_id);
-    type_add(&terry, rot_id);
-    type_add(&terry, vel_id);
+    i32_t *foo_data = ecs_entity_storage_get(ecs, bob, foo);
+    *foo_data = 42;
 
-    archetype_graph_t graph = {0};
-    archetype_graph_add(&graph, jerry);
-    archetype_graph_add(&graph, bob);
-    archetype_graph_add(&graph, steve);
-    archetype_graph_add(&graph, terry);
+    ecs_entity_add(ecs, bob, bar);
+    ecs_entity_add(ecs, bob, baz);
+    ecs_entity_add(ecs, bob, qux);
 
-    archetype_graph_print(graph);
-    re_log_debug("==========");
-    archetype_graph_print_all(graph);
+    foo_data = ecs_entity_storage_get(ecs, bob, foo);
+    re_log_debug("%d", *foo_data);
 
-    type_free(&bob);
+    ecs_entity_remove(ecs, bob, bar);
 
-    archetype_graph_free(&graph);
-    id_handler_free(&handler);
+    foo_data = ecs_entity_storage_get(ecs, bob, foo);
+    re_log_debug("%d", *foo_data);
+
+    ecs_entity_t steve = ecs_entity_new(ecs);
+    ecs_entity_name_set(ecs, steve, re_str_lit("Steve"));
+    ecs_entity_add(ecs, steve, foo);
+    ecs_entity_add(ecs, steve, bar);
+    ecs_entity_add(ecs, steve, baz);
+    ecs_entity_add(ecs, steve, qux);
+
+    ecs_entity_t jerry = ecs_entity_new(ecs);
+    ecs_entity_add(ecs, jerry, foo);
+    ecs_entity_add(ecs, jerry, baz);
+
+    archetype_graph_print(ecs, ecs->archetype_graph);
+
+    ecs_free(ecs);
 
     re_arena_destroy(&arena);
     re_terminate();
